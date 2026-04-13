@@ -296,7 +296,7 @@ export class GeminiService {
                         const out = new Uint8ClampedArray(src.length);
                         const wm = w - 1, hm = h - 1;
                         const div = radius * 2 + 1;
-                        const vsum = new Uint32Array(w);
+                        // const vsum = new Uint32Array(w);
                         
                         // Horizontal pass
                         for(let y=0; y<h; y++) {

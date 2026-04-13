@@ -114,7 +114,7 @@ const calculateFinalCrop = () => {
   const container = document.querySelector(".modal-preview-area");
   const img = container?.querySelector("img");
   const cropBox = container?.querySelector(".modal-crop-box");
-  if (!img || !cropBox) return null;
+  if (!img || !cropBox) return;
   const imgRect = img.getBoundingClientRect();
   const boxRect = cropBox.getBoundingClientRect();
   const scale = img.naturalWidth / imgRect.width;
