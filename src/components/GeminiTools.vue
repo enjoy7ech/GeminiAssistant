@@ -51,6 +51,7 @@ interface ImageSession {
   prompt: string;
   imageUrl: string;
   originalImageUrl: string;
+  inputImageUrl?: string;
   updatedAt: number;
   mattingConfig?: {
     tolerance: number;
@@ -91,6 +92,7 @@ const imagePresetId = ref("");
 const imagePrompt = ref("");
 const imageUrl = ref("");
 const originalImageUrl = ref("");
+const imageInputUrl = ref("");
 const useGreenScreen = ref(true);
 const webpQuality = ref(0.85);
 const chromaTolerance = ref(1.15);
@@ -109,6 +111,7 @@ watch(activeImageSession, (s) => {
   if (s) {
     imageUrl.value = s.imageUrl;
     originalImageUrl.value = s.originalImageUrl;
+    imageInputUrl.value = s.inputImageUrl || "";
     imagePrompt.value = s.prompt;
     if (s.mattingConfig) {
       chromaTolerance.value = s.mattingConfig.tolerance;
@@ -134,6 +137,7 @@ const updateSessionConfig = () => {
     };
     activeImageSession.value.updatedAt = Date.now();
     activeImageSession.value.imageUrl = imageUrl.value; // Store processed state
+    activeImageSession.value.inputImageUrl = imageInputUrl.value; 
   }
 };
 
@@ -186,6 +190,7 @@ watch(
     chromaErosion,
     chromaFeathering,
     imageUrl,
+    imageInputUrl,
   ],
   updateSessionConfig,
 );
@@ -220,6 +225,7 @@ watch(textPrompt, (v) => storage.save("config", "text_prompt", v));
 watch(imagePrefix, (v) => storage.save("config", "image_prefix", v));
 watch(imagePresetId, (v) => storage.save("config", "image_preset_id", v));
 watch(imagePrompt, (v) => storage.save("config", "image_prompt", v));
+watch(imageInputUrl, (v) => storage.save("config", "image_input_url", v));
 watch(useGreenScreen, (v) => storage.save("config", "use_green_screen", v));
 watch(webpQuality, (v) => storage.save("config", "webp_quality", v));
 watch(currentCacheName, (v) => storage.save("config", "chat_cache_name", v));
@@ -281,6 +287,7 @@ onMounted(async () => {
   imagePrefix.value = (await storage.load("config", "image_prefix")) || "";
   imagePresetId.value = (await storage.load("config", "image_preset_id")) || "";
   imagePrompt.value = (await storage.load("config", "image_prompt")) || "";
+  imageInputUrl.value = (await storage.load("config", "image_input_url")) || "";
   useGreenScreen.value =
     (await storage.load("config", "use_green_screen")) !== false;
   webpQuality.value = (await storage.load("config", "webp_quality")) || 0.85;
@@ -545,11 +552,21 @@ const generateImage = async () => {
   isLoading.value = true;
   imageUrl.value = "";
   originalImageUrl.value = "";
+
+  let inputImage = undefined;
+  if (imageInputUrl.value) {
+    const parts = imageInputUrl.value.split(",");
+    const mimeType = parts[0].match(/:(.*?);/)?.[1] || "image/png";
+    const data = parts[1];
+    inputImage = { mimeType, data };
+  }
+
   try {
     const res = await gemini.generateImage(
       `${imagePrefix.value} ${imagePrompt.value}`,
       {
         useGreenScreen: useGreenScreen.value,
+        inputImage,
         chromaOptions: {
           tolerance: chromaTolerance.value,
           contiguous: isMattingContiguous.value,
@@ -568,6 +585,7 @@ const generateImage = async () => {
       prompt: imagePrompt.value,
       imageUrl: res.url,
       originalImageUrl: res.originalUrl || res.url,
+      inputImageUrl: imageInputUrl.value,
       updatedAt: Date.now(),
     };
     imageSessions.value.unshift(newSession);
@@ -789,6 +807,7 @@ const prepareExport = (url: string, type: string) => {
           v-model:targetColor="chromaTargetColor"
           v-model:erosion="chromaErosion"
           v-model:feathering="chromaFeathering"
+          v-model:inputImageUrl="imageInputUrl"
           :allModels="availableModels"
           :presets="imagePresets"
           :is-loading="isLoading"
@@ -825,6 +844,7 @@ const prepareExport = (url: string, type: string) => {
           v-model:targetColor="chromaTargetColor"
           v-model:erosion="chromaErosion"
           v-model:feathering="chromaFeathering"
+          v-model:inputImageUrl="imageInputUrl"
           :allModels="availableModels"
           :presets="imagePresets"
           :is-loading="isLoading"

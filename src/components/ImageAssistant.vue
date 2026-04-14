@@ -26,6 +26,7 @@ const props = defineProps<{
   feathering: number;
   sessions: any[];
   activeSessionId: string;
+  inputImageUrl?: string;
 }>();
 
 const emit = defineEmits([
@@ -52,6 +53,7 @@ const emit = defineEmits([
   "select-session",
   "delete-session",
   "rename-session",
+  "update:inputImageUrl",
 ]);
 
 const applyPreset = (p: any) => {
@@ -59,6 +61,7 @@ const applyPreset = (p: any) => {
   emit("update:activePresetId", p.id);
 };
 
+const fileInput = ref<HTMLInputElement | null>(null);
 const activeModel = ref(props.currentModel);
 watch(
   () => activeModel.value,
@@ -95,6 +98,20 @@ const handleDeleteSession = (s: any) => {
     emit("delete-session", s.id);
   }
 };
+
+const handleFileUpload = (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    emit("update:inputImageUrl", ev.target?.result as string);
+  };
+  reader.readAsDataURL(file);
+};
+
+const clearUpload = () => {
+  emit("update:inputImageUrl", "");
+};
 </script>
 
 <template>
@@ -124,6 +141,31 @@ const handleDeleteSession = (s: any) => {
               <i class="chip-close" @click.stop="$emit('remove-preset', p.id)"
                 >×</i
               >
+            </div>
+          </div>
+        </div>
+
+        <div class="upload-section">
+          <label>参考图片 (Optional)</label>
+          <div
+            class="upload-area"
+            :class="{ has_image: inputImageUrl }"
+            @click="fileInput?.click()"
+          >
+            <input
+              type="file"
+              ref="fileInput"
+              hidden
+              accept="image/*"
+              @change="handleFileUpload"
+            />
+            <div v-if="inputImageUrl" class="preview-container">
+              <img :src="inputImageUrl" class="upload-preview" />
+              <button class="clear-btn" @click.stop="clearUpload">×</button>
+            </div>
+            <div v-else class="upload-placeholder">
+              <span class="icon">🖼️</span>
+              <span>点击上传参考图</span>
             </div>
           </div>
         </div>
@@ -421,5 +463,86 @@ const handleDeleteSession = (s: any) => {
   gap: 8px;
   padding: 0 8px;
   height: 100%;
+}
+
+/* Upload Section Styling */
+.upload-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.upload-section label {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 600;
+}
+.upload-area {
+  width: 100%;
+  height: 120px;
+  border: 2px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+}
+.upload-area:hover {
+  border-color: var(--primary-cyan);
+  background: rgba(0, 255, 242, 0.05);
+}
+.upload-area.has_image {
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.85rem;
+}
+.upload-placeholder .icon {
+  font-size: 1.5rem;
+}
+.preview-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+.upload-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+}
+.clear-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: all 0.2s;
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+}
+.clear-btn:hover {
+  background: #ff5f56;
+  border-color: #ff5f56;
 }
 </style>

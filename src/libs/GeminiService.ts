@@ -15,6 +15,10 @@ export interface ImageGenerateOptions {
   compressWebp?: boolean;
   webpQuality?: number;
   chromaOptions?: ChromaOptions;
+  inputImage?: {
+    mimeType: string;
+    data: string;
+  };
 }
 
 export class GeminiService {
@@ -171,6 +175,9 @@ export class GeminiService {
             let resultData: { base64: string, url: string, originalUrl?: string };
 
             if (isImagen) {
+                // For Imagen models, current SDK might not support image-to-image easily via generateImages
+                // We will stick to text-to-image for Imagen unless we have specific API docs for it.
+                // However, many Gemini models can generate images from multimodal prompts.
                 const response = await this.client.models.generateImages({
                     model: this.imageModel,
                     prompt: finalPrompt,
@@ -180,10 +187,17 @@ export class GeminiService {
                 if (!img) throw new Error("未生成图片数据");
                 resultData = { base64: img.base64, url: img.url || `data:image/png;base64,${img.base64}` };
             } else {
+                const parts: any[] = [{ text: finalPrompt }];
+                if (options.inputImage) {
+                    parts.push({
+                        inlineData: options.inputImage
+                    });
+                }
                 const result = await this.client.models.generateContent({
                     model: this.imageModel,
-                    contents: [{ role: 'user', parts: [{ text: finalPrompt }] }]
+                    contents: [{ role: 'user', parts }]
                 });
+
                 const candidate = result.candidates?.[0];
                 const imagePart = candidate?.content?.parts?.find((p: any) => p.inlineData);
                 if (!imagePart) throw new Error("模型未返回图片数据");
