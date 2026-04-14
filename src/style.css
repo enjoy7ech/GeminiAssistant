@@ -1,3 +1,10 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary-cyan: #00fff2;
+  --color-primary-purple: #7c3aed;
+}
+
 /* Gemini Assistant Global Design System */
 :root {
   color-scheme: dark;
@@ -486,13 +493,14 @@ input[type="checkbox"] {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
 }
 .modal-header h3 {
   margin: 0;
-  color: var(--primary-cyan);
-  font-size: 1.3rem;
-  font-weight: 800;
+  font-weight: 600;
+  font-size: 1.2rem;
+  background: linear-gradient(to right, #fff, #94a3b8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 .close-modal-btn {
   background: rgba(255, 255, 255, 0.05);
@@ -622,9 +630,34 @@ input[type="range"]::-webkit-slider-thumb {
     border-radius: 6px;
     cursor: pointer;
   }
-  .btn-clear {
+.btn-clear {
     background: rgba(255, 100, 100, 0.1);
     color: #ff6e6e;
     border: 1px solid rgba(255, 100, 100, 0.2);
   }
+}
+
+/* Animations Utilities */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInFromBottom {
+  from { transform: translateY(8px); }
+  to { transform: translateY(0); }
+}
+
+.animate-in {
+  animation-duration: 0.2s;
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+}
+
+.fade-in {
+  animation-name: fadeIn;
+}
+
+.slide-in-from-bottom-2 {
+  animation-name: slideInFromBottom;
 }

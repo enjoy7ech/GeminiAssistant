@@ -102,9 +102,7 @@ const renderMarkdown = (text: string) => {
 };
 
 const handleDeleteSession = (s: any) => {
-  if (confirm(`确定要删除会话 "${s.title}" 吗？`)) {
-    emit("delete-session", s.id);
-  }
+  emit("delete-session", s.id);
 };
 </script>
 

@@ -24,6 +24,7 @@
           </div>
           <div class="modal-footer">
             <button v-if="cancelText" class="btn btn-ghost" @click="$emit('close')">{{ cancelText }}</button>
+            <button v-if="retryText" class="btn btn-accent" @click="$emit('retry')">{{ retryText }}</button>
             <button class="btn btn-primary btn-small" @click="$emit('confirm')">{{ confirmText }}</button>
           </div>
         </div>
@@ -43,13 +44,15 @@ const props = withDefaults(defineProps<{
   showInput?: boolean
   confirmText?: string
   cancelText?: string
+  retryText?: string
 }>(), {
   confirmText: '确定',
   cancelText: '取消',
-  showInput: false
+  showInput: false,
+  retryText: ''
 })
 
-const emit = defineEmits(['close', 'confirm', 'update:modelValue'])
+const emit = defineEmits(['close', 'confirm', 'retry', 'update:modelValue'])
 const inputRef = ref<HTMLInputElement | null>(null)
 
 watch(() => props.show, (newVal) => {

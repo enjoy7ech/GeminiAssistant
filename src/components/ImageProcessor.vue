@@ -82,6 +82,7 @@ const onFileChange = (e: Event) => {
       :viewerState="viewerState"
       :showActions="true"
       @update:tolerance="$emit('update:tolerance', $event)"
+      @update:smoothing="$emit('update:smoothing', $event)"
       @update:targetColor="$emit('update:targetColor', $event)"
       @update:erosion="$emit('update:erosion', $event)"
       @update:feathering="$emit('update:feathering', $event)"
@@ -102,7 +103,11 @@ const onFileChange = (e: Event) => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  background: radial-gradient(circle at center, rgba(0, 255, 242, 0.03) 0%, transparent 70%);
+  background: radial-gradient(
+    circle at center,
+    rgba(0, 255, 242, 0.03) 0%,
+    transparent 70%
+  );
 }
 
 .upload-card {
@@ -124,7 +129,7 @@ const onFileChange = (e: Event) => {
 }
 
 .upload-card::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   background: linear-gradient(135deg, rgba(0, 255, 242, 0.1), transparent);

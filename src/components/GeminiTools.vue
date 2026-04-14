@@ -51,7 +51,7 @@ interface ImageSession {
   prompt: string;
   imageUrl: string;
   originalImageUrl: string;
-  inputImageUrl?: string;
+  inputImageUrls?: string[];
   updatedAt: number;
   mattingConfig?: {
     tolerance: number;
@@ -92,7 +92,7 @@ const imagePresetId = ref("");
 const imagePrompt = ref("");
 const imageUrl = ref("");
 const originalImageUrl = ref("");
-const imageInputUrl = ref("");
+const imageInputUrls = ref<string[]>([]);
 const useGreenScreen = ref(true);
 const webpQuality = ref(0.85);
 const chromaTolerance = ref(1.15);
@@ -111,35 +111,21 @@ watch(activeImageSession, (s) => {
   if (s) {
     imageUrl.value = s.imageUrl;
     originalImageUrl.value = s.originalImageUrl;
-    imageInputUrl.value = s.inputImageUrl || "";
-    imagePrompt.value = s.prompt;
+    // Deep copy reference images to avoid mutating session history accidentally
+    imageInputUrls.value = s.inputImageUrls ? [...s.inputImageUrls] : [];
+    imagePrompt.value = s.prompt || "";
+    imagePrefix.value = (s as any).prefix || ""; // Restore prefix if stored
     if (s.mattingConfig) {
       chromaTolerance.value = s.mattingConfig.tolerance;
       isMattingContiguous.value = s.mattingConfig.contiguous;
       chromaSmoothing.value = s.mattingConfig.smoothing;
-      chromaTargetColor.value = s.mattingConfig.targetColor;
+      chromaTargetColor.value = { ...s.mattingConfig.targetColor };
       chromaErosion.value = s.mattingConfig.erosion;
       chromaFeathering.value = s.mattingConfig.feathering;
     }
   }
 });
 
-// Update session config when local matting refs change
-const updateSessionConfig = () => {
-  if (activeImageSession.value) {
-    activeImageSession.value.mattingConfig = {
-      tolerance: chromaTolerance.value,
-      contiguous: isMattingContiguous.value,
-      smoothing: chromaSmoothing.value,
-      targetColor: chromaTargetColor.value,
-      erosion: chromaErosion.value,
-      feathering: chromaFeathering.value,
-    };
-    activeImageSession.value.updatedAt = Date.now();
-    activeImageSession.value.imageUrl = imageUrl.value; // Store processed state
-    activeImageSession.value.inputImageUrl = imageInputUrl.value; 
-  }
-};
 
 const currentCacheName = ref("");
 const isCaching = ref(false);
@@ -148,10 +134,11 @@ let mattingTimeout: any = null;
 const isMattingProcessing = ref(false);
 
 const updateMatting = async () => {
+  const s = activeImageSession.value;
   const sourceUrl =
     props.activeTab === "matting"
       ? manualOriginalImageUrl.value
-      : originalImageUrl.value;
+      : s?.originalImageUrl || "";
 
   if (!sourceUrl || isMattingProcessing.value) return;
 
@@ -169,9 +156,11 @@ const updateMatting = async () => {
         feathering: chromaFeathering.value,
       });
 
+      const s = activeImageSession.value;
       if (props.activeTab === "matting") {
         manualImageUrl.value = res.url;
-      } else {
+      } else if (s) {
+        s.imageUrl = res.url;
         imageUrl.value = res.url;
       }
     } finally {
@@ -181,6 +170,7 @@ const updateMatting = async () => {
   }, 150);
 };
 
+// Unified matting parameter watcher with session sync
 watch(
   [
     chromaTolerance,
@@ -189,24 +179,33 @@ watch(
     chromaTargetColor,
     chromaErosion,
     chromaFeathering,
-    imageUrl,
-    imageInputUrl,
-  ],
-  updateSessionConfig,
-);
-
-watch(
-  [
-    chromaTolerance,
-    isMattingContiguous,
-    chromaSmoothing,
-    chromaTargetColor,
-    chromaErosion,
-    chromaFeathering,
-    manualOriginalImageUrl,
     originalImageUrl,
+    manualOriginalImageUrl,
   ],
-  updateMatting,
+  () => {
+    // Sync back to session if possible to prevent 'jump back' on session switch
+    const s = activeImageSession.value;
+    if (s) {
+      if (!s.mattingConfig) {
+        s.mattingConfig = {
+          tolerance: chromaTolerance.value,
+          contiguous: isMattingContiguous.value,
+          smoothing: chromaSmoothing.value,
+          targetColor: { ...chromaTargetColor.value },
+          erosion: chromaErosion.value,
+          feathering: chromaFeathering.value,
+        };
+      }
+      s.mattingConfig.tolerance = chromaTolerance.value;
+      s.mattingConfig.contiguous = isMattingContiguous.value;
+      s.mattingConfig.smoothing = chromaSmoothing.value;
+      s.mattingConfig.targetColor = { ...chromaTargetColor.value };
+      s.mattingConfig.erosion = chromaErosion.value;
+      s.mattingConfig.feathering = chromaFeathering.value;
+    }
+    updateMatting();
+  },
+  { deep: true },
 );
 
 watch(apiKey, (v) => storage.save("config", "api_key", v));
@@ -225,7 +224,26 @@ watch(textPrompt, (v) => storage.save("config", "text_prompt", v));
 watch(imagePrefix, (v) => storage.save("config", "image_prefix", v));
 watch(imagePresetId, (v) => storage.save("config", "image_preset_id", v));
 watch(imagePrompt, (v) => storage.save("config", "image_prompt", v));
-watch(imageInputUrl, (v) => storage.save("config", "image_input_url", v));
+watch(
+  imageInputUrls,
+  (v) => {
+    if (isLoaded.value) {
+      try {
+        storage
+          .save("config", "image_input_urls", JSON.parse(JSON.stringify(v)))
+          .catch((err) => {
+            console.warn(
+              "Reference images save failed (might be too large):",
+              err,
+            );
+          });
+      } catch (e) {
+        console.warn("JSON stringify failed for reference images:", e);
+      }
+    }
+  },
+  { deep: true },
+);
 watch(useGreenScreen, (v) => storage.save("config", "use_green_screen", v));
 watch(webpQuality, (v) => storage.save("config", "webp_quality", v));
 watch(currentCacheName, (v) => storage.save("config", "chat_cache_name", v));
@@ -249,8 +267,17 @@ watch(activeSessionId, (v) => {
 watch(
   imageSessions,
   (v) => {
-    if (isLoaded.value)
-      storage.save("image_sessions", "all", JSON.parse(JSON.stringify(v)));
+    if (isLoaded.value) {
+      try {
+        storage
+          .save("image_sessions", "all", JSON.parse(JSON.stringify(v)))
+          .catch((err) => {
+            console.warn("Image sessions save failed:", err);
+          });
+      } catch (e) {
+        console.warn("JSON stringify failed for image sessions:", e);
+      }
+    }
   },
   { deep: true },
 );
@@ -287,7 +314,8 @@ onMounted(async () => {
   imagePrefix.value = (await storage.load("config", "image_prefix")) || "";
   imagePresetId.value = (await storage.load("config", "image_preset_id")) || "";
   imagePrompt.value = (await storage.load("config", "image_prompt")) || "";
-  imageInputUrl.value = (await storage.load("config", "image_input_url")) || "";
+  imageInputUrls.value =
+    (await storage.load("config", "image_input_urls")) || [];
   useGreenScreen.value =
     (await storage.load("config", "use_green_screen")) !== false;
   webpQuality.value = (await storage.load("config", "webp_quality")) || 0.85;
@@ -448,14 +476,19 @@ const deleteCurrentCache = async () => {
 };
 
 const deleteSession = (id: string) => {
-  const idx = sessions.value.findIndex((s) => s.id === id);
-  if (idx !== -1) {
-    sessions.value.splice(idx, 1);
-    if (activeSessionId.value === id) {
-      activeSessionId.value = sessions.value[0]?.id || "";
+  const session = sessions.value.find((s) => s.id === id);
+  if (!session) return;
+
+  showConfirm("确认删除", `确定要删除会话 "${session.title}" 吗？`, () => {
+    const idx = sessions.value.findIndex((s) => s.id === id);
+    if (idx !== -1) {
+      sessions.value.splice(idx, 1);
+      if (activeSessionId.value === id) {
+        activeSessionId.value = sessions.value[0]?.id || "";
+      }
+      showStatus("会话已删除");
     }
-    showStatus("会话已删除");
-  }
+  });
 };
 
 const createNewSession = () => {
@@ -516,14 +549,23 @@ const renameSession = (id: string, newTitle: string) => {
 };
 
 const deleteImageSession = (id: string) => {
-  const idx = imageSessions.value.findIndex((s) => s.id === id);
-  if (idx !== -1) {
-    imageSessions.value.splice(idx, 1);
-    if (activeImageSessionId.value === id) {
-      activeImageSessionId.value = imageSessions.value[0]?.id || "";
-    }
-    showStatus("生图记录已删除");
-  }
+  const session = imageSessions.value.find((s) => s.id === id);
+  if (!session) return;
+
+  showConfirm(
+    "确认删除",
+    `确定要删除此生图记录 "${session.title}" 吗？`,
+    () => {
+      const idx = imageSessions.value.findIndex((s) => s.id === id);
+      if (idx !== -1) {
+        imageSessions.value.splice(idx, 1);
+        if (activeImageSessionId.value === id) {
+          activeImageSessionId.value = imageSessions.value[0]?.id || "";
+        }
+        showStatus("生图记录已删除");
+      }
+    },
+  );
 };
 
 const renameImageSession = (id: string, newTitle: string) => {
@@ -542,6 +584,7 @@ const createNewImageSession = () => {
     prompt: "",
     imageUrl: "",
     originalImageUrl: "",
+    inputImageUrls: [],
     updatedAt: Date.now(),
   });
   activeImageSessionId.value = newSid;
@@ -553,20 +596,19 @@ const generateImage = async () => {
   imageUrl.value = "";
   originalImageUrl.value = "";
 
-  let inputImage = undefined;
-  if (imageInputUrl.value) {
-    const parts = imageInputUrl.value.split(",");
+  const inputImages = imageInputUrls.value.map((url) => {
+    const parts = url.split(",");
     const mimeType = parts[0].match(/:(.*?);/)?.[1] || "image/png";
     const data = parts[1];
-    inputImage = { mimeType, data };
-  }
+    return { mimeType, data };
+  });
 
   try {
     const res = await gemini.generateImage(
       `${imagePrefix.value} ${imagePrompt.value}`,
       {
         useGreenScreen: useGreenScreen.value,
-        inputImage,
+        inputImages,
         chromaOptions: {
           tolerance: chromaTolerance.value,
           contiguous: isMattingContiguous.value,
@@ -577,15 +619,25 @@ const generateImage = async () => {
         },
       },
     );
-    if (res.error) return showAlert(res.error);
+    if (res.error) return showAlert(res.error, generateImage);
     const newSid = "img-" + Date.now();
-    const newSession = {
+    const newSession: ImageSession = {
       id: newSid,
       title: imagePrompt.value.slice(0, 10) || "生图结果",
       prompt: imagePrompt.value,
+      // @ts-ignore
+      prefix: imagePrefix.value, // Save prefix for reproduction
       imageUrl: res.url,
       originalImageUrl: res.originalUrl || res.url,
-      inputImageUrl: imageInputUrl.value,
+      inputImageUrls: [...imageInputUrls.value],
+      mattingConfig: {
+        tolerance: chromaTolerance.value,
+        contiguous: isMattingContiguous.value,
+        smoothing: chromaSmoothing.value,
+        targetColor: JSON.parse(JSON.stringify(chromaTargetColor.value)),
+        erosion: chromaErosion.value,
+        feathering: chromaFeathering.value,
+      },
       updatedAt: Date.now(),
     };
     imageSessions.value.unshift(newSession);
@@ -593,6 +645,74 @@ const generateImage = async () => {
     imageUrl.value = res.url;
     originalImageUrl.value = res.originalUrl || res.url;
     showStatus("图片生成成功");
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const handleContinueGenerate = async ({
+  prompt,
+  editedImage,
+}: {
+  prompt: string;
+  editedImage: string;
+}) => {
+  if (!prompt) return;
+  isLoading.value = true;
+
+  // Use the edited image as the primary reference
+  const inputImages = editedImage
+    ? [
+        {
+          mimeType: "image/png",
+          data: editedImage.split(",")[1],
+        },
+      ]
+    : [];
+
+  try {
+    const res = await gemini.generateImage(`${imagePrefix.value} ${prompt}`, {
+      useGreenScreen: useGreenScreen.value,
+      inputImages,
+      chromaOptions: {
+        tolerance: chromaTolerance.value,
+        contiguous: isMattingContiguous.value,
+        smoothing: chromaSmoothing.value,
+        targetColor: chromaTargetColor.value,
+        erosion: chromaErosion.value,
+        feathering: chromaFeathering.value,
+      },
+    });
+    if (res.error)
+      return showAlert(res.error, () =>
+        handleContinueGenerate({ prompt, editedImage }),
+      );
+
+    const newSid = "img-" + Date.now();
+    const newSession: ImageSession = {
+      id: newSid,
+      title: prompt.slice(0, 10) || "续写结果",
+      prompt,
+      // @ts-ignore
+      prefix: imagePrefix.value,
+      imageUrl: res.url,
+      originalImageUrl: res.originalUrl || res.url,
+      inputImageUrls: editedImage ? [editedImage] : [],
+      mattingConfig: {
+        tolerance: chromaTolerance.value,
+        contiguous: isMattingContiguous.value,
+        smoothing: chromaSmoothing.value,
+        targetColor: JSON.parse(JSON.stringify(chromaTargetColor.value)),
+        erosion: chromaErosion.value,
+        feathering: chromaFeathering.value,
+      },
+      updatedAt: Date.now(),
+    };
+    imageSessions.value.unshift(newSession);
+    activeImageSessionId.value = newSid;
+    imageUrl.value = res.url;
+    originalImageUrl.value = res.originalUrl || res.url;
+    showStatus("续写生成成功");
   } finally {
     isLoading.value = false;
   }
@@ -652,12 +772,14 @@ const modal = ref({
   showInput: false,
   confirmText: "确定",
   cancelText: "取消",
+  retryText: "",
   onConfirm: null as Function | null,
+  onRetry: null as Function | null,
 });
 
 const exportTarget = ref<{ url: string; type: string } | null>(null);
 
-const showAlert = (message: string) => {
+const showAlert = (message: string, onRetry?: Function) => {
   modal.value = {
     show: true,
     title: "系统提示",
@@ -666,7 +788,32 @@ const showAlert = (message: string) => {
     showInput: false,
     confirmText: "我知道了",
     cancelText: "",
+    retryText: onRetry ? "再试一次" : "",
     onConfirm: () => (modal.value.show = false),
+    onRetry: onRetry
+      ? () => {
+          onRetry();
+          modal.value.show = false;
+        }
+      : null,
+  };
+};
+
+const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+  modal.value = {
+    show: true,
+    title,
+    message,
+    inputValue: "",
+    showInput: false,
+    confirmText: "确定",
+    cancelText: "取消",
+    retryText: "",
+    onConfirm: () => {
+      onConfirm();
+      modal.value.show = false;
+    },
+    onRetry: null,
   };
 };
 
@@ -680,6 +827,7 @@ const addTextPreset = () => {
     showInput: true,
     confirmText: "保存",
     cancelText: "取消",
+    retryText: "",
     onConfirm: () => {
       if (!modal.value.inputValue) return;
       textPresets.value.push({
@@ -691,6 +839,7 @@ const addTextPreset = () => {
       modal.value.show = false;
       showStatus("预设已保存");
     },
+    onRetry: null,
   };
 };
 
@@ -704,6 +853,7 @@ const addImagePreset = () => {
     showInput: true,
     confirmText: "保存",
     cancelText: "取消",
+    retryText: "",
     onConfirm: () => {
       if (!modal.value.inputValue) return;
       imagePresets.value.push({
@@ -715,6 +865,7 @@ const addImagePreset = () => {
       modal.value.show = false;
       showStatus("画风预设已保存");
     },
+    onRetry: null,
   };
 };
 
@@ -807,12 +958,12 @@ const prepareExport = (url: string, type: string) => {
           v-model:targetColor="chromaTargetColor"
           v-model:erosion="chromaErosion"
           v-model:feathering="chromaFeathering"
-          v-model:inputImageUrl="imageInputUrl"
+          v-model:inputImageUrls="imageInputUrls"
           :allModels="availableModels"
           :presets="imagePresets"
           :is-loading="isLoading"
-          :image-url="s.imageUrl"
-          :original-image-url="s.originalImageUrl"
+          :imageUrl="s.imageUrl || s.originalImageUrl"
+          v-model:originalImageUrl="s.originalImageUrl"
           :sessions="imageSessions"
           :active-session-id="activeImageSessionId"
           :viewer-state="viewerState"
@@ -828,6 +979,7 @@ const prepareExport = (url: string, type: string) => {
           @remove-preset="(id) => removePreset('image', id)"
           @prepare-webp="prepareExport"
           @update-matting="updateMatting"
+          @continue-generate="handleContinueGenerate"
         />
         <!-- Image Empty State -->
         <ImageAssistant
@@ -844,7 +996,7 @@ const prepareExport = (url: string, type: string) => {
           v-model:targetColor="chromaTargetColor"
           v-model:erosion="chromaErosion"
           v-model:feathering="chromaFeathering"
-          v-model:inputImageUrl="imageInputUrl"
+          v-model:inputImageUrls="imageInputUrls"
           :allModels="availableModels"
           :presets="imagePresets"
           :is-loading="isLoading"
@@ -909,8 +1061,10 @@ const prepareExport = (url: string, type: string) => {
       :show-input="modal.showInput"
       :confirm-text="modal.confirmText"
       :cancel-text="modal.cancelText"
+      :retry-text="modal.retryText"
       @close="modal.show = false"
       @confirm="modal.onConfirm?.()"
+      @retry="modal.onRetry?.()"
     />
 
     <ExportAssistant

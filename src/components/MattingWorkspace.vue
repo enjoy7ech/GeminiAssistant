@@ -17,6 +17,7 @@ const props = defineProps<{
 
 const emit = defineEmits([
   "update:tolerance",
+  "update:smoothing",
   "update:targetColor",
   "update:erosion",
   "update:feathering",
@@ -209,6 +210,28 @@ const onFeatheringUpdate = (e: Event) => {
             step="0.1"
           />
         </div>
+        <div class="tc-slider">
+          <label
+            >平滑
+            <span class="highlight-cyan">{{
+              smoothing.toFixed(2)
+            }}</span></label
+          >
+          <input
+            type="range"
+            :value="smoothing"
+            @input="
+              $emit(
+                'update:smoothing',
+                parseFloat(($event.target as HTMLInputElement).value),
+              );
+              $emit('update-matting');
+            "
+            min="0"
+            max="1"
+            step="0.01"
+          />
+        </div>
       </div>
 
       <!-- Result View (Right) -->
@@ -216,7 +239,7 @@ const onFeatheringUpdate = (e: Event) => {
         <div v-if="imageUrl" class="workspace-right-wrap">
           <div class="viewer-header">
             <div class="vh-top">
-              <span class="v-tag">后果预览</span>
+              <span class="v-tag">预览</span>
               <div class="v-actions" v-if="showActions">
                 <button
                   class="v-mini-btn"
