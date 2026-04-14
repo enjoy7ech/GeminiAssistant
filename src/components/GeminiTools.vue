@@ -4,7 +4,7 @@ import { gemini } from "../libs/GeminiService";
 import { storage } from "../libs/StorageService";
 import TextAssistant from "./TextAssistant.vue";
 import ImageAssistant from "./ImageAssistant.vue";
-import ManualMatting from "./ManualMatting.vue";
+import ImageProcessor from "./ImageProcessor.vue";
 import ConfigView from "./ConfigView.vue";
 import GeminiModal from "./GeminiModal.vue";
 import ExportAssistant from "./ExportAssistant.vue";
@@ -840,7 +840,7 @@ const prepareExport = (url: string, type: string) => {
         />
       </template>
 
-      <ManualMatting
+      <ImageProcessor
         v-if="activeTab === 'matting'"
         v-model:imageUrl="manualImageUrl"
         v-model:originalImageUrl="manualOriginalImageUrl"

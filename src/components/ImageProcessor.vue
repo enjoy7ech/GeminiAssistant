@@ -54,10 +54,10 @@ const onFileChange = (e: Event) => {
 </script>
 
 <template>
-  <div class="manual-matting">
+  <div class="image-processor">
     <div v-if="!originalImageUrl" class="upload-card" @click="triggerUpload">
       <div class="upload-icon-wrapper">📁</div>
-      <h3>上传图片开始抠像</h3>
+      <h3>上传图片开始处理</h3>
       <p>点击或拖拽文件到此处</p>
       <p class="upload-hint">支持 JPG, PNG, WebP 等通用图像格式</p>
       <input
@@ -96,7 +96,7 @@ const onFileChange = (e: Event) => {
 </template>
 
 <style scoped>
-.manual-matting {
+.image-processor {
   flex: 1;
   display: flex;
   align-items: center;

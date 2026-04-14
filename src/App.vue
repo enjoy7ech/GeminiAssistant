@@ -70,11 +70,18 @@ const setTab = (tab: string) => {
               fill="none"
               stroke="currentColor"
               stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
             >
-              <path d="M20 7h-9m3 3H5m12 12V11M7 21v-6" />
+              <path d="m15 5 4 4" />
+              <path d="M13 7 8.7 11.3a2 2 0 0 0 0 2.8l.7.7a2 2 0 0 0 2.8 0L16.5 10.5 13 7Z" />
+              <path d="M9 7 4 4" />
+              <path d="m5 11 4 4" />
+              <path d="M19 13v4" />
+              <path d="M10 21h4" />
             </svg>
           </div>
-          <span>手动抠像</span>
+          <span>图片处理</span>
         </button>
       </nav>
 

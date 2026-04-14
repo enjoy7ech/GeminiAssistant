@@ -81,6 +81,7 @@ defineProps<{
   -webkit-text-fill-color: transparent;
   margin: 0 0 16px 0;
   letter-spacing: -1px;
+  padding: 0 1rem;
 }
 
 .welcome-subtitle {
