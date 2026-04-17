@@ -256,8 +256,18 @@ watch(manualOriginalImageUrl, (v) =>
 watch(
   sessions,
   (v) => {
-    if (isLoaded.value)
+    if (isLoaded.value) {
+      // Auto reset active session if not found or empty
+      if (v.length === 0) {
+        activeSessionId.value = "";
+      } else if (
+        activeSessionId.value &&
+        !v.some((s) => s.id === activeSessionId.value)
+      ) {
+        activeSessionId.value = v[0].id;
+      }
       storage.save("text_sessions", "all", JSON.parse(JSON.stringify(v)));
+    }
   },
   { deep: true },
 );
@@ -268,6 +278,15 @@ watch(
   imageSessions,
   (v) => {
     if (isLoaded.value) {
+      // Auto reset active session if not found or empty
+      if (v.length === 0) {
+        activeImageSessionId.value = "";
+      } else if (
+        activeImageSessionId.value &&
+        !v.some((s) => s.id === activeImageSessionId.value)
+      ) {
+        activeImageSessionId.value = v[0].id;
+      }
       try {
         storage
           .save("image_sessions", "all", JSON.parse(JSON.stringify(v)))
@@ -332,8 +351,13 @@ onMounted(async () => {
   const cachedSessions = await storage.load("text_sessions", "all");
   if (cachedSessions && cachedSessions.length > 0) {
     sessions.value = cachedSessions;
-    activeSessionId.value =
-      (await storage.load("config", "active_sid")) || sessions.value[0].id;
+    const savedSid = await storage.load("config", "active_sid");
+    if (savedSid && sessions.value.some((s) => s.id === savedSid)) {
+      activeSessionId.value = savedSid;
+    } else {
+      activeSessionId.value = sessions.value[0].id;
+      storage.save("config", "active_sid", activeSessionId.value);
+    }
   } else {
     sessions.value = [];
     activeSessionId.value = "";
@@ -343,9 +367,13 @@ onMounted(async () => {
   const cachedImgSessions = await storage.load("image_sessions", "all");
   if (cachedImgSessions && cachedImgSessions.length > 0) {
     imageSessions.value = cachedImgSessions;
-    activeImageSessionId.value =
-      (await storage.load("config", "active_img_sid")) ||
-      imageSessions.value[0].id;
+    const savedImgSid = await storage.load("config", "active_img_sid");
+    if (savedImgSid && imageSessions.value.some((s) => s.id === savedImgSid)) {
+      activeImageSessionId.value = savedImgSid;
+    } else {
+      activeImageSessionId.value = imageSessions.value[0].id;
+      storage.save("config", "active_img_sid", activeImageSessionId.value);
+    }
   } else {
     imageSessions.value = [];
     activeImageSessionId.value = "";
