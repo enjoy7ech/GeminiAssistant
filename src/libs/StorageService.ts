@@ -6,7 +6,7 @@
 
 export class StorageService {
     private dbName = "GeminiAssistantDB";
-    private dbVersion = 4; // Upgraded for resolution_presets support
+    private dbVersion = 5; // Upgraded for process_sessions support
     private db: IDBDatabase | null = null;
 
     private async getDB(): Promise<IDBDatabase> {
@@ -22,6 +22,7 @@ export class StorageService {
                     "config", 
                     "text_sessions", 
                     "image_sessions", 
+                    "process_sessions",
                     "manual_matting", 
                     "presets",
                     "resolution_presets"

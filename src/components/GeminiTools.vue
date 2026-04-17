@@ -65,6 +65,24 @@ interface ImageSession {
 const imageSessions = ref<ImageSession[]>([]);
 const activeImageSessionId = ref<string>("");
 
+interface ProcessSession {
+  id: string;
+  title: string;
+  imageUrl: string;
+  originalImageUrl: string;
+  mattingConfig?: {
+    tolerance: number;
+    contiguous: boolean;
+    smoothing: number;
+    targetColor: { r: number; g: number; b: number };
+    erosion: number;
+    feathering: number;
+  };
+  updatedAt: number;
+}
+const processSessions = ref<ProcessSession[]>([]);
+const activeProcessSessionId = ref<string>("");
+
 const isLoaded = ref(false);
 
 const activeSession = computed(() =>
@@ -133,12 +151,33 @@ const isCaching = ref(false);
 let mattingTimeout: any = null;
 const isMattingProcessing = ref(false);
 
+const activeProcessSession = computed(() =>
+  processSessions.value.find((s) => s.id === activeProcessSessionId.value),
+);
+
+// Unified matting parameter watcher with session sync for process session
+watch(activeProcessSession, (s) => {
+  if (s) {
+    manualImageUrl.value = s.imageUrl;
+    manualOriginalImageUrl.value = s.originalImageUrl;
+    if (s.mattingConfig) {
+      chromaTolerance.value = s.mattingConfig.tolerance;
+      isMattingContiguous.value = s.mattingConfig.contiguous;
+      chromaSmoothing.value = s.mattingConfig.smoothing;
+      chromaTargetColor.value = { ...s.mattingConfig.targetColor };
+      chromaErosion.value = s.mattingConfig.erosion;
+      chromaFeathering.value = s.mattingConfig.feathering;
+    }
+  }
+});
+
 const updateMatting = async () => {
-  const s = activeImageSession.value;
+  const iSession = activeImageSession.value;
+  const pSession = activeProcessSession.value;
   const sourceUrl =
     props.activeTab === "matting"
       ? manualOriginalImageUrl.value
-      : s?.originalImageUrl || "";
+      : iSession?.originalImageUrl || "";
 
   if (!sourceUrl || isMattingProcessing.value) return;
 
@@ -156,11 +195,13 @@ const updateMatting = async () => {
         feathering: chromaFeathering.value,
       });
 
-      const s = activeImageSession.value;
       if (props.activeTab === "matting") {
         manualImageUrl.value = res.url;
-      } else if (s) {
-        s.imageUrl = res.url;
+        if (pSession) {
+          pSession.imageUrl = res.url;
+        }
+      } else if (iSession) {
+        iSession.imageUrl = res.url;
         imageUrl.value = res.url;
       }
     } finally {
@@ -185,7 +226,7 @@ watch(
   () => {
     // Sync back to session if possible to prevent 'jump back' on session switch
     const s = activeImageSession.value;
-    if (s) {
+    if (s && props.activeTab !== "matting") {
       if (!s.mattingConfig) {
         s.mattingConfig = {
           tolerance: chromaTolerance.value,
@@ -202,6 +243,28 @@ watch(
       s.mattingConfig.targetColor = { ...chromaTargetColor.value };
       s.mattingConfig.erosion = chromaErosion.value;
       s.mattingConfig.feathering = chromaFeathering.value;
+    }
+    const pSession = activeProcessSession.value;
+    if (pSession && props.activeTab === "matting") {
+        if (!pSession.mattingConfig) {
+            pSession.mattingConfig = {
+              tolerance: chromaTolerance.value,
+              contiguous: isMattingContiguous.value,
+              smoothing: chromaSmoothing.value,
+              targetColor: { ...chromaTargetColor.value },
+              erosion: chromaErosion.value,
+              feathering: chromaFeathering.value,
+            };
+        }
+        pSession.mattingConfig.tolerance = chromaTolerance.value;
+        pSession.mattingConfig.contiguous = isMattingContiguous.value;
+        pSession.mattingConfig.smoothing = chromaSmoothing.value;
+        pSession.mattingConfig.targetColor = { ...chromaTargetColor.value };
+        pSession.mattingConfig.erosion = chromaErosion.value;
+        pSession.mattingConfig.feathering = chromaFeathering.value;
+        
+        pSession.imageUrl = manualImageUrl.value;
+        pSession.originalImageUrl = manualOriginalImageUrl.value;
     }
     updateMatting();
   },
@@ -252,6 +315,36 @@ watch(manualImageUrl, (v) => storage.save("manual_matting", "current_url", v));
 watch(manualOriginalImageUrl, (v) =>
   storage.save("manual_matting", "original_url", v),
 );
+
+watch(
+  processSessions,
+  (v) => {
+    if (isLoaded.value) {
+      // Auto reset active session if not found or empty
+      if (v.length === 0) {
+        activeProcessSessionId.value = "";
+      } else if (
+        activeProcessSessionId.value &&
+        !v.some((s) => s.id === activeProcessSessionId.value)
+      ) {
+        activeProcessSessionId.value = v[0].id;
+      }
+      try {
+        storage
+          .save("process_sessions", "all", JSON.parse(JSON.stringify(v)))
+          .catch((err) => {
+            console.warn("Process sessions save failed:", err);
+          });
+      } catch (e) {
+        console.warn("JSON stringify failed for process sessions:", e);
+      }
+    }
+  },
+  { deep: true },
+);
+watch(activeProcessSessionId, (v) => {
+  if (isLoaded.value) storage.save("config", "active_process_sid", v);
+});
 
 watch(
   sessions,
@@ -377,6 +470,22 @@ onMounted(async () => {
   } else {
     imageSessions.value = [];
     activeImageSessionId.value = "";
+  }
+
+  // Load process sessions
+  const cachedProcessSessions = await storage.load("process_sessions", "all");
+  if (cachedProcessSessions && cachedProcessSessions.length > 0) {
+    processSessions.value = cachedProcessSessions;
+    const savedProcessSid = await storage.load("config", "active_process_sid");
+    if (savedProcessSid && processSessions.value.some((s) => s.id === savedProcessSid)) {
+      activeProcessSessionId.value = savedProcessSid;
+    } else {
+      activeProcessSessionId.value = processSessions.value[0].id;
+      storage.save("config", "active_process_sid", activeProcessSessionId.value);
+    }
+  } else {
+    processSessions.value = [];
+    activeProcessSessionId.value = "";
   }
 
   // Load Presets
@@ -617,6 +726,47 @@ const createNewImageSession = () => {
   });
   activeImageSessionId.value = newSid;
   showStatus("新画板已创建");
+};
+
+const deleteProcessSession = (id: string) => {
+  const session = processSessions.value.find((s) => s.id === id);
+  if (!session) return;
+
+  showConfirm(
+    "确认删除",
+    `确定要删除此处理会话 "${session.title}" 吗？`,
+    () => {
+      const idx = processSessions.value.findIndex((s) => s.id === id);
+      if (idx !== -1) {
+        processSessions.value.splice(idx, 1);
+        if (activeProcessSessionId.value === id) {
+          activeProcessSessionId.value = processSessions.value[0]?.id || "";
+        }
+        showStatus("处理会话已删除");
+      }
+    },
+  );
+};
+
+const renameProcessSession = (id: string, newTitle: string) => {
+  const session = processSessions.value.find((s) => s.id === id);
+  if (session) {
+    session.title = newTitle;
+    session.updatedAt = Date.now();
+  }
+};
+
+const createNewProcessSession = () => {
+  const newSid = "proc-" + Date.now();
+  processSessions.value.unshift({
+    id: newSid,
+    title: "新处理",
+    imageUrl: "",
+    originalImageUrl: "",
+    updatedAt: Date.now(),
+  });
+  activeProcessSessionId.value = newSid;
+  showStatus("新处理会话已创建");
 };
 
 const generateImage = async () => {
@@ -1040,25 +1190,57 @@ const prepareExport = (url: string, type: string) => {
         />
       </template>
 
-      <ImageProcessor
-        v-if="activeTab === 'matting'"
-        v-model:imageUrl="manualImageUrl"
-        v-model:originalImageUrl="manualOriginalImageUrl"
-        v-model:tolerance="chromaTolerance"
-        v-model:smoothing="chromaSmoothing"
-        v-model:webpQuality="webpQuality"
-        v-model:isContiguous="isMattingContiguous"
-        v-model:targetColor="chromaTargetColor"
-        v-model:erosion="chromaErosion"
-        v-model:feathering="chromaFeathering"
-        :viewer-state="viewerState"
-        @update-matting="updateMatting"
-        @reset-viewer="resetViewer"
-        @handle-zoom="handleZoom"
-        @start-drag="startDrag"
-        @prepare-webp="prepareExport"
-        @reprocess="updateMatting"
-      />
+      <template v-if="activeTab === 'matting'">
+        <ImageProcessor
+          v-for="s in processSessions"
+          :key="s.id"
+          v-show="s.id === activeProcessSessionId"
+          v-model:imageUrl="manualImageUrl"
+          v-model:originalImageUrl="manualOriginalImageUrl"
+          v-model:tolerance="chromaTolerance"
+          v-model:smoothing="chromaSmoothing"
+          v-model:webpQuality="webpQuality"
+          v-model:isContiguous="isMattingContiguous"
+          v-model:targetColor="chromaTargetColor"
+          v-model:erosion="chromaErosion"
+          v-model:feathering="chromaFeathering"
+          :viewer-state="viewerState"
+          :sessions="processSessions"
+          :active-session-id="activeProcessSessionId"
+          @update-matting="updateMatting"
+          @reset-viewer="resetViewer"
+          @handle-zoom="handleZoom"
+          @start-drag="startDrag"
+          @prepare-webp="prepareExport"
+          @reprocess="updateMatting"
+          @select-session="(id: string) => (activeProcessSessionId = id)"
+          @delete-session="deleteProcessSession"
+          @rename-session="renameProcessSession"
+          @new-session="createNewProcessSession"
+        />
+        <ImageProcessor
+          v-if="processSessions.length === 0"
+          v-model:imageUrl="manualImageUrl"
+          v-model:originalImageUrl="manualOriginalImageUrl"
+          v-model:tolerance="chromaTolerance"
+          v-model:smoothing="chromaSmoothing"
+          v-model:webpQuality="webpQuality"
+          v-model:isContiguous="isMattingContiguous"
+          v-model:targetColor="chromaTargetColor"
+          v-model:erosion="chromaErosion"
+          v-model:feathering="chromaFeathering"
+          :viewer-state="viewerState"
+          :sessions="[]"
+          active-session-id=""
+          @update-matting="updateMatting"
+          @reset-viewer="resetViewer"
+          @handle-zoom="handleZoom"
+          @start-drag="startDrag"
+          @prepare-webp="prepareExport"
+          @reprocess="updateMatting"
+          @new-session="createNewProcessSession"
+        />
+      </template>
 
       <ConfigView
         v-if="activeTab === 'config'"
